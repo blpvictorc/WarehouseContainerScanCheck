@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Warehouse Loading & Barcode Scan Check Generator v2.4</title>
+    <title>Warehouse Loading & Barcode Scan Check Generator Web v1.0</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -51,7 +51,7 @@
                 <div>
                     <h1 class="text-lg font-bold tracking-wide flex items-center gap-2">
                         Warehouse Loading &amp; Scan Check Generator
-                        <span class="bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-emerald-400/30">v2.4 Pro</span>
+                        <span class="bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-emerald-400/30">Web v1.0</span>
                     </h1>
                     <p class="text-xs text-slate-400">Single / Batch Customer Order Parser &amp; Sample-Aware Barcode Check Builder</p>
                 </div>
@@ -861,7 +861,7 @@
             const allInvoicesStr = invoiceListArray.join(', ');
 
             const workbook = new ExcelJS.Workbook();
-            workbook.creator = 'Warehouse Loading & Scan Check System v2.4';
+            workbook.creator = 'Warehouse Loading & Scan Check System Web v1.0';
             workbook.created = new Date();
 
             // ---------------------------------------------------------------------
