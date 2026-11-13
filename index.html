@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warehouse Loading & Barcode Scan Check Generator</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- SheetJS for Reading Customer Order Excels -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <!-- ExcelJS for Generating Rich Styled Warehouse Scan Check Excel -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+    <!-- JSZip for Batch Export -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #f1f5f9;
+        }
+        .mono-font {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-800 min-h-screen flex flex-col">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-40">
+        <div class="max-w-[1750px] mx-auto px-6 py-3.5 flex flex-wrap justify-between items-center gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="bg-emerald-600 p-2 rounded-lg shadow-inner">
+                    <i class="fa-solid fa-barcode text-xl text-white"></i>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-wide flex items-center gap-2">
+                        Warehouse Loading &amp; Scan Check Generator
+                        <span class="bg-emerald-500/20 text-emerald-300 text-xs font-semibold px-2.5 py-0.5 rounded-full border border-emerald-400/30">Web 1.0</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Single / Batch Customer Order Parser &amp; Visual Progress Barcode Check Builder</p>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-wrap items-center gap-2.5">
+                <button onclick="openAddItemModal()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-xs font-semibold px-3.5 py-2 rounded-lg transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-plus text-emerald-400"></i>
+                    <span>手動補加貨品 (Add Item)</span>
+                </button>
+                <button onclick="exportSelectedSeparatelyZip()" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow transition flex items-center gap-1.5" title="將已勾選的每張訂單獨立生成 Check Tool 並打包成 ZIP">
+                    <i class="fa-solid fa-file-zipper"></i>
+                    <span>逐張獨立匯出 (.ZIP)</span>
+                </button>
+                <button onclick="exportMergedCheckTool()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-4 py-2 rounded-lg shadow transition flex items-center gap-1.5" title="將所有已勾選的訂單合併成一份倉庫裝貨 Check Tool">
+                    <i class="fa-solid fa-file-excel"></i>
+                    <span>合併匯出 Check Tool (.xlsx)</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="flex-1 max-w-[1750px] w-full mx-auto px-6 py-6 space-y-6">
+
+        <!-- STEP 1: SINGLE / MULTI-FILE UPLOAD & CONFIGURATION -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-center">
+                <!-- Dropzone + Explicit Single / Multi Buttons -->
+                <div class="lg:col-span-5">
+                    <div id="dropzone" onclick="if(event.target.tagName !== 'LABEL' && !event.target.closest('label')) document.getElementById('file-input-multi').click();"
+                        class="flex flex-col items-center justify-center w-full border-2 border-dashed border-emerald-400 rounded-xl bg-emerald-50/40 hover:bg-emerald-50 transition p-4 text-center space-y-2.5 cursor-pointer">
+                        <div class="flex items-center space-x-3">
+                            <div class="bg-emerald-600 text-white w-10 h-10 rounded-full flex items-center justify-center shadow shrink-0">
+                                <i class="fa-solid fa-cloud-arrow-up text-lg"></i>
+                            </div>
+                            <div class="text-left">
+                                <p class="text-sm font-bold text-slate-800">點擊或拖放多個客人訂單 Excel 至此</p>
+                                <p class="text-xs text-slate-500 mt-0.5">支援 <code class="bg-white px-1 rounded border">xxx-xxxx.xlsx</code> 訂單格式，可按 <kbd class="bg-white px-1 border rounded text-[10px]">Ctrl</kbd> / <kbd class="bg-white px-1 border rounded text-[10px]">Shift</kbd> 一次多選</p>
+                            </div>
+                        </div>
+
+                        <div class="flex flex-wrap items-center justify-center gap-2.5 pt-1">
+                            <label onclick="event.stopPropagation()" class="bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs cursor-pointer transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-excel text-emerald-600"></i>
+                                <span>匯入單一檔案 (Single)</span>
+                                <input id="file-input-single" type="file" accept=".xlsx,.xls,.xlsm" class="hidden" onchange="handleFilesUpload(event)">
+                            </label>
+                            <label onclick="event.stopPropagation()" class="bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold px-3.5 py-1.5 rounded-lg shadow-2xs cursor-pointer transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-copy"></i>
+                                <span>一次匯入多檔案 (Batch)</span>
+                                <input id="file-input-multi" type="file" accept=".xlsx,.xls,.xlsm" multiple class="hidden" onchange="handleFilesUpload(event)">
+                            </label>
+                        </div>
+
+                        <!-- Batch Progress Indicator -->
+                        <div id="upload-progress-bar" class="hidden w-full bg-emerald-100 text-emerald-800 text-xs font-bold px-3 py-1 rounded-lg border border-emerald-300">
+                            <i class="fa-solid fa-spinner fa-spin mr-1.5"></i><span id="upload-progress-text">正在讀取檔案...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings & KPI Summary -->
+                <div class="lg:col-span-7 grid grid-cols-1 sm:grid-cols-4 gap-3.5">
+                    <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                        <label class="block text-[11px] font-bold uppercase text-slate-500 mb-1">檢查日期 (Check Date)</label>
+                        <input type="text" id="check-date-input" class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 mono-font focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                        <p class="text-[10px] text-slate-400 mt-1">顯示於倉庫 Scan 表頂部</p>
+                    </div>
+
+                    <div class="bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+                        <label class="block text-[11px] font-bold uppercase text-slate-500 mb-1">掃描上限行數 (Max Rows)</label>
+                        <select id="max-scan-rows" class="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-800 mono-font focus:ring-2 focus:ring-emerald-500 focus:outline-none">
+                            <option value="10000">10,000 箱 (標準大容量)</option>
+                            <option value="15000" selected>15,000 箱 (多櫃合併推薦)</option>
+                            <option value="20000">20,000 箱 (超大貨量上限)</option>
+                        </select>
+                        <p class="text-[10px] text-slate-400 mt-1">預設預載公式行數</p>
+                    </div>
+
+                    <div class="bg-blue-50/70 p-3.5 rounded-xl border border-blue-200 flex flex-col justify-between">
+                        <span class="text-[11px] font-bold uppercase text-blue-600">已選訂單 / SKU 數</span>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <span id="kpi-selected-orders" class="text-2xl font-extrabold text-blue-900 mono-font">0</span>
+                            <span class="text-xs text-blue-700 font-semibold">單 /</span>
+                            <span id="kpi-unique-skus" class="text-xl font-bold text-blue-800 mono-font">0</span>
+                            <span class="text-xs text-blue-700">款貨</span>
+                        </div>
+                        <span class="text-[10px] text-blue-500">自動合併相同 JAN Code</span>
+                    </div>
+
+                    <div class="bg-emerald-50/70 p-3.5 rounded-xl border border-emerald-200 flex flex-col justify-between">
+                        <span class="text-[11px] font-bold uppercase text-emerald-700">總應出箱數 (Target CTNS)</span>
+                        <div class="flex items-baseline gap-2 mt-1">
+                            <span id="kpi-total-ctns" class="text-2xl font-extrabold text-emerald-900 mono-font">0</span>
+                            <span class="text-xs text-emerald-700 font-semibold">CTNS</span>
+                        </div>
+                        <span id="kpi-total-pcs" class="text-[10px] text-emerald-600 mono-font">Total: 0 PCS</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 2: ORDER SELECTION CARDS (MULTI-ORDER FILTER) -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-5 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="bg-blue-100 text-blue-700 text-xs font-bold px-2.5 py-0.5 rounded">Step 1</span>
+                    <h2 class="text-sm font-bold text-slate-800">選擇要納入裝貨檢查表的訂單 (可勾選部分或全部)</h2>
+                    <span id="total-uploaded-badge" class="bg-slate-100 text-slate-600 text-xs font-bold px-2 py-0.5 rounded-full mono-font">已載入 0 份檔案</span>
+                </div>
+                <div class="flex items-center gap-2 text-xs">
+                    <button onclick="toggleAllOrders(true)" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition">全選 (Select All)</button>
+                    <button onclick="toggleAllOrders(false)" class="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold transition">全不選 (Deselect All)</button>
+                    <button onclick="clearAllUploadedData()" class="px-2.5 py-1 rounded bg-rose-50 hover:bg-rose-100 text-rose-600 font-semibold transition">清空全部檔案</button>
+                </div>
+            </div>
+
+            <div id="orders-card-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pt-1">
+                <div class="col-span-full py-8 text-center text-slate-400 text-xs bg-slate-50 rounded-lg border border-dashed border-slate-200">
+                    尚未匯入任何訂單檔案。請於上方匯入單一或多個 <code class="font-mono">xxx-xxxx.xlsx</code> 附件。
+                </div>
+            </div>
+        </div>
+
+        <!-- STEP 3: LIVE PREVIEW & ADJUSTMENT TABLE -->
+        <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div class="bg-slate-800 text-white px-5 py-3.5 flex flex-wrap justify-between items-center gap-3">
+                <div class="flex items-center space-x-3">
+                    <span class="bg-emerald-600 text-white text-xs font-bold px-2.5 py-1 rounded flex items-center gap-1.5">
+                        <i class="fa-solid fa-sliders"></i>
+                        <span>Step 2: 裝貨清單預覽與微調 (匯出前可直接修改箱數 / 剔除貨品)</span>
+                    </span>
+                    <span id="table-summary-badge" class="text-xs text-slate-300 mono-font">0 items</span>
+                </div>
+
+                <div class="flex items-center gap-3">
+                    <!-- View Mode Switch -->
+                    <div class="flex items-center bg-slate-700 p-0.5 rounded-lg text-xs border border-slate-600">
+                        <button id="mode-grouped-btn" onclick="setViewMode('grouped')" class="px-3 py-1 rounded-md bg-blue-600 text-white font-semibold transition">
+                            按 JAN 合併預覽 (倉庫掃描視角)
+                        </button>
+                        <button id="mode-raw-btn" onclick="setViewMode('raw')" class="px-3 py-1 rounded-md text-slate-300 hover:text-white font-semibold transition">
+                            按訂單逐行明細
+                        </button>
+                    </div>
+
+                    <!-- Search -->
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3 top-2 text-slate-400 text-xs"></i>
+                        <input type="text" id="search-input" oninput="renderPreviewTable()" placeholder="搜尋 JAN, Item#, 貨名, 單號..."
+                            class="pl-8 pr-3 py-1 bg-slate-700 border border-slate-600 rounded-lg text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-400 w-56">
+                    </div>
+                </div>
+            </div>
+
+            <div class="overflow-x-auto max-h-[540px]">
+                <table class="w-full text-left border-collapse text-xs whitespace-nowrap">
+                    <thead id="preview-thead" class="bg-slate-100 text-slate-600 uppercase sticky top-0 z-10 shadow-sm">
+                    </thead>
+                    <tbody id="preview-tbody" class="divide-y divide-slate-200 mono-font">
+                        <tr>
+                            <td colspan="10" class="py-12 text-center text-slate-400">
+                                請先上傳並勾選客人訂單，系統會自動整合所有 JAN Code 與應出箱數。
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- MODAL: MANUAL ADD ITEM -->
+    <div id="modal-add-item" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
+            <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
+                <h3 class="text-sm font-bold flex items-center gap-2">
+                    <i class="fa-solid fa-plus-circle text-emerald-400"></i>
+                    手動補加臨時出貨 Item
+                </h3>
+                <button onclick="closeAddItemModal()" class="text-slate-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 space-y-3 text-xs">
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">所屬單號 (Invoice / Order No.) *</label>
+                    <input type="text" id="add-inv" value="EXTRA-ADD" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">JAN Code (13位條碼) *</label>
+                        <input type="text" id="add-jan" placeholder="例如: 4582769908484" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Item # (貨號)</label>
+                        <input type="text" id="add-itemno" placeholder="例如: 2812172" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
+                    </div>
+                </div>
+                <div>
+                    <label class="block font-bold text-slate-700 mb-1">貨品名稱 (Item Description) *</label>
+                    <input type="text" id="add-desc" placeholder="輸入貨品英文或中文名稱" class="w-full px-3 py-2 border border-slate-300 rounded-lg">
+                </div>
+                <div class="grid grid-cols-3 gap-3">
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">應出箱數 (CTNS) *</label>
+                        <input type="number" id="add-ctns" value="1" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font text-right">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">每箱件數 (Pack)</label>
+                        <input type="number" id="add-pack" value="24" min="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font text-right">
+                    </div>
+                    <div>
+                        <label class="block font-bold text-slate-700 mb-1">Case Mark</label>
+                        <input type="text" id="add-casemark" placeholder="HK / ASIA" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
+                    </div>
+                </div>
+                <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
+                    <button onclick="closeAddItemModal()" class="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold">取消</button>
+                    <button onclick="confirmAddManualItem()" class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold">確認加入</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+        <div class="bg-slate-900 text-white px-5 py-3.5 rounded-xl shadow-2xl border border-slate-700 flex items-center space-x-3">
+            <i id="toast-icon" class="fa-solid fa-circle-check text-emerald-400 text-lg"></i>
+            <div>
+                <p id="toast-title" class="text-sm font-bold">完成</p>
+                <p id="toast-msg" class="text-xs text-slate-300">操作成功。</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // =========================================================================
+        // 1. GLOBAL STATE
+        // =========================================================================
+        let uploadedOrders = [];
+        let viewMode = 'grouped';
+        let itemUidCounter = 1;
+
+        window.addEventListener('DOMContentLoaded', () => {
+            const now = new Date();
+            const yyyy = now.getFullYear();
+            const mm = String(now.getMonth() + 1).padStart(2, '0');
+            const dd = String(now.getDate()).padStart(2, '0');
+            document.getElementById('check-date-input').value = `${yyyy}${mm}${dd}`;
+
+            const dz = document.getElementById('dropzone');
+            dz.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dz.classList.add('bg-emerald-100', 'border-emerald-600');
+            });
+            dz.addEventListener('dragleave', () => {
+                dz.classList.remove('bg-emerald-100', 'border-emerald-600');
+            });
+            dz.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dz.classList.remove('bg-emerald-100', 'border-emerald-600');
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    const droppedFiles = Array.from(e.dataTransfer.files);
+                    processUploadedFiles(droppedFiles);
+                }
+            });
+        });
+
+        // =========================================================================
+        // 2. FILE PARSER FOR CUSTOMER ORDERS (FIXED: SNAPSHOT ARRAY BEFORE RESET)
+        // =========================================================================
+        function handleFilesUpload(e) {
+            const inputEl = e.target;
+            if (!inputEl.files || inputEl.files.length === 0) return;
+
+            // CRITICAL FIX: Snapshot FileList into a static JS Array BEFORE clearing input.value
+            const filesArray = Array.from(inputEl.files);
+            inputEl.value = '';
+
+            processUploadedFiles(filesArray);
+        }
+
+        async function processUploadedFiles(filesArray) {
+            const progressBar = document.getElementById('upload-progress-bar');
+            const progressText = document.getElementById('upload-progress-text');
+            progressBar.classList.remove('hidden');
+
+            let successCount = 0;
+            const totalFiles = filesArray.length;
+
+            for (let i = 0; i < totalFiles; i++) {
+                const file = filesArray[i];
+                progressText.textContent = `正在解析 (${i + 1} / ${totalFiles}): ${file.name}...`;
+
+                try {
+                    const buffer = await readFileAsArrayBuffer(file);
+                    const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+                    const parsedOrder = parseCustomerOrderWorkbook(wb, file.name);
+                    if (parsedOrder && parsedOrder.items.length > 0) {
+                        const existingIdx = uploadedOrders.findIndex(o => o.fileName === file.name);
+                        if (existingIdx >= 0) {
+                            uploadedOrders[existingIdx] = parsedOrder;
+                        } else {
+                            uploadedOrders.push(parsedOrder);
+                        }
+                        successCount++;
+                    } else {
+                        showToast('解析警告', `檔案 "${file.name}" 找不到有效的 JAN Code 貨品明細。`, 'warning');
+                    }
+                } catch (err) {
+                    console.error('Error parsing file:', file.name, err);
+                    showToast('讀取錯誤', `無法讀取 "${file.name}": ${err.message}`, 'warning');
+                }
+            }
+
+            progressBar.classList.add('hidden');
+            renderOrderCards();
+            renderPreviewTable();
+
+            if (successCount > 0) {
+                showToast('批次匯入完成', `成功讀取 ${successCount} / ${totalFiles} 份客人訂單！`, 'success');
+            }
+        }
+
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (evt) => resolve(evt.target.result);
+                reader.onerror = () => reject(new Error('FileReader 讀取失敗'));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function parseCustomerOrderWorkbook(wb, fileName) {
+            const sheetName = wb.SheetNames.includes('SO')
+                ? 'SO'
+                : (wb.SheetNames.includes('PL') ? 'PL' : wb.SheetNames[0]);
+            const ws = wb.Sheets[sheetName];
+            const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+
+            let invoiceNo = fileName.replace(/\.[^/.]+$/, '');
+            let consignee = '';
+            let destination = '';
+            let deliveryMonth = '';
+
+            for (let r = 0; r < Math.min(26, aoa.length); r++) {
+                const row = aoa[r] || [];
+                for (let c = 0; c < row.length; c++) {
+                    const val = String(row[c] || '').trim();
+                    const upper = val.toUpperCase();
+                    if (upper.startsWith('INVOICE NO') && row[c + 1]) {
+                        invoiceNo = String(row[c + 1]).trim();
+                    }
+                    if (upper === 'CONSIGNEE' && aoa[r + 1] && aoa[r + 1][c + 1]) {
+                        consignee = String(aoa[r + 1][c + 1]).trim();
+                    }
+                    if ((upper === 'PLACE OF DELIVERY' || upper === 'PORT OF DISCHARGE') && aoa[r + 1] && aoa[r + 1][c]) {
+                        destination = String(aoa[r + 1][c]).trim();
+                    }
+                    if (upper.startsWith('DELIVERY DATE') && aoa[r + 2]) {
+                        const foundMonth = aoa[r + 2].find(x => String(x || '').trim() !== '');
+                        if (foundMonth) deliveryMonth = String(foundMonth).trim();
+                    }
+                }
+            }
+
+            let headerRowIdx = -1;
+            let colMap = { itemNo: 0, matNo: 1, jan: 2, desc: 3, caseMark: 5, pcs: 6, ctns: 7, pack: 8, cbm: 10 };
+
+            for (let r = 20; r < Math.min(40, aoa.length); r++) {
+                const row = aoa[r] || [];
+                const janCol = row.findIndex(cell => String(cell || '').trim().toLowerCase().includes('jan'));
+                if (janCol !== -1) {
+                    headerRowIdx = r;
+                    colMap.jan = janCol;
+                    row.forEach((cell, idx) => {
+                        const h = String(cell || '').trim().toLowerCase();
+                        if (h.includes('item #') || h === 'item') colMap.itemNo = idx;
+                        else if (h.includes('material') || h.includes('sku')) colMap.matNo = idx;
+                        else if (h.includes('item name') || h.includes('description')) colMap.desc = idx;
+                        else if (h.includes('case mark')) colMap.caseMark = idx;
+                        else if (h === 'pcs' || h.includes('pc(s)')) colMap.pcs = idx;
+                        else if (h === 'ctns' || h.includes('ctn(s)')) colMap.ctns = idx;
+                        else if (h.includes('pcs/ctns') || h.includes('pack')) colMap.pack = idx;
+                        else if (h === 'm3' || h.includes('cbm')) colMap.cbm = idx;
+                    });
+                    break;
+                }
+            }
+
+            const items = [];
+            const startRow = headerRowIdx >= 0 ? headerRowIdx + 2 : 29;
+
+            for (let r = startRow; r < aoa.length; r++) {
+                const row = aoa[r] || [];
+                const rawJan = String(row[colMap.jan] || '').trim();
+                const rowStr = row.join(' ').toUpperCase();
+                if (rowStr.includes('TOTAL') && !/^\d{8,14}$/.test(rawJan)) break;
+
+                const cleanJan = rawJan.replace(/\.0$/, '').trim();
+                if (/^\d{8,14}$/.test(cleanJan)) {
+                    const ctnsVal = parseFloat(row[colMap.ctns]) || 0;
+                    const pcsVal = parseFloat(row[colMap.pcs]) || 0;
+                    const packVal = parseFloat(row[colMap.pack]) || (ctnsVal > 0 ? Math.round(pcsVal / ctnsVal) : 0);
+                    const cbmVal = parseFloat(row[colMap.cbm]) || 0;
+
+                    if (ctnsVal > 0 || pcsVal > 0) {
+                        items.push({
+                            uid: itemUidCounter++,
+                            invoiceNo: invoiceNo,
+                            fileName: fileName,
+                            itemNo: String(row[colMap.itemNo] || '').trim(),
+                            matNo: String(row[colMap.matNo] || '').trim(),
+                            jan: cleanJan,
+                            desc: String(row[colMap.desc] || '').trim(),
+                            caseMark: String(row[colMap.caseMark] || '').trim(),
+                            pcs: pcsVal,
+                            ctns: ctnsVal,
+                            pack: packVal,
+                            cbm: cbmVal,
+                            included: true
+                        });
+                    }
+                }
+            }
+
+            return {
+                id: 'ord_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+                fileName,
+                invoiceNo,
+                consignee,
+                destination,
+                deliveryMonth,
+                selected: true,
+                items
+            };
+        }
+
+        // =========================================================================
+        // 3. ORDER CARDS & AGGREGATION LOGIC
+        // =========================================================================
+        function renderOrderCards() {
+            const grid = document.getElementById('orders-card-grid');
+            document.getElementById('total-uploaded-badge').textContent = `已載入 ${uploadedOrders.length} 份檔案`;
+
+            if (uploadedOrders.length === 0) {
+                grid.innerHTML = `<div class="col-span-full py-8 text-center text-slate-400 text-xs bg-slate-50 rounded-lg border border-dashed border-slate-200">尚未匯入任何訂單檔案。請於上方匯入單一或多個 <code class="font-mono">xxx-xxxx.xlsx</code> 附件。</div>`;
+                updateKPIs();
+                return;
+            }
+
+            grid.innerHTML = uploadedOrders.map((ord, idx) => {
+                const activeItems = ord.items.filter(i => i.included);
+                const totalCtns = activeItems.reduce((sum, i) => sum + (Number(i.ctns) || 0), 0);
+                const borderCls = ord.selected
+                    ? 'border-emerald-500 bg-emerald-50/30 ring-1 ring-emerald-500/40'
+                    : 'border-slate-200 bg-white opacity-65 hover:opacity-100';
+
+                return `
+                    <div class="rounded-xl border ${borderCls} p-3.5 transition flex flex-col justify-between space-y-2.5 shadow-2xs">
+                        <div class="flex items-start justify-between gap-2">
+                            <label class="flex items-center gap-2 cursor-pointer flex-1 min-w-0">
+                                <input type="checkbox" ${ord.selected ? 'checked' : ''} onchange="toggleOrderSelection(${idx}, this.checked)"
+                                    class="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer">
+                                <div class="truncate">
+                                    <span class="font-extrabold text-sm text-slate-800 mono-font block truncate">${escapeHtml(ord.invoiceNo)}</span>
+                                    <span class="text-[10px] text-slate-400 block truncate">${escapeHtml(ord.fileName)}</span>
+                                </div>
+                            </label>
+                            <button onclick="removeOrder(${idx})" class="text-slate-400 hover:text-rose-600 p-1 transition" title="移除此訂單">
+                                <i class="fa-solid fa-trash-can text-xs"></i>
+                            </button>
+                        </div>
+
+                        <div class="text-[11px] text-slate-600 space-y-0.5 border-t border-slate-100 pt-2">
+                            <p class="truncate" title="${escapeHtml(ord.consignee)}"><i class="fa-solid fa-building text-slate-400 w-4"></i>${escapeHtml(ord.consignee || 'N/A')}</p>
+                            <p class="truncate"><i class="fa-solid fa-location-dot text-slate-400 w-4"></i>${escapeHtml(ord.destination || '-')} ${ord.deliveryMonth ? `(${escapeHtml(ord.deliveryMonth)})` : ''}</p>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-1.5 border-t border-slate-100 text-xs">
+                            <span class="bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-semibold mono-font">${activeItems.length} 項</span>
+                            <span class="font-bold text-emerald-700 mono-font">${totalCtns} CTNS</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            updateKPIs();
+        }
+
+        function toggleOrderSelection(idx, checked) {
+            if (uploadedOrders[idx]) {
+                uploadedOrders[idx].selected = checked;
+                renderOrderCards();
+                renderPreviewTable();
+            }
+        }
+
+        function toggleAllOrders(checked) {
+            uploadedOrders.forEach(o => o.selected = checked);
+            renderOrderCards();
+            renderPreviewTable();
+        }
+
+        function removeOrder(idx) {
+            uploadedOrders.splice(idx, 1);
+            renderOrderCards();
+            renderPreviewTable();
+        }
+
+        function clearAllUploadedData() {
+            uploadedOrders = [];
+            renderOrderCards();
+            renderPreviewTable();
+            showToast('已清空', '所有匯入的訂單資料已清除。', 'info');
+        }
+
+        function getActiveRawItems() {
+            const list = [];
+            uploadedOrders.forEach(ord => {
+                if (!ord.selected) return;
+                ord.items.forEach(item => {
+                    if (item.included) list.push(item);
+                });
+            });
+            return list;
+        }
+
+        function getGroupedJanItems(rawItems) {
+            const map = new Map();
+            rawItems.forEach(item => {
+                const key = item.jan;
+                if (!map.has(key)) {
+                    map.set(key, {
+                        jan: item.jan,
+                        itemNos: new Set([item.itemNo].filter(Boolean)),
+                        matNos: new Set([item.matNo].filter(Boolean)),
+                        desc: item.desc,
+                        caseMarks: new Set([item.caseMark].filter(Boolean)),
+                        invoices: new Set([item.invoiceNo].filter(Boolean)),
+                        totalPcs: Number(item.pcs) || 0,
+                        totalCtns: Number(item.ctns) || 0,
+                        pack: item.pack || 0
+                    });
+                } else {
+                    const g = map.get(key);
+                    if (item.itemNo) g.itemNos.add(item.itemNo);
+                    if (item.matNo) g.matNos.add(item.matNo);
+                    if (item.caseMark) g.caseMarks.add(item.caseMark);
+                    if (item.invoiceNo) g.invoices.add(item.invoiceNo);
+                    g.totalPcs += (Number(item.pcs) || 0);
+                    g.totalCtns += (Number(item.ctns) || 0);
+                }
+            });
+
+            return Array.from(map.values()).map(g => ({
+                jan: g.jan,
+                itemNo: Array.from(g.itemNos).join(' / '),
+                matNo: Array.from(g.matNos).join(' / '),
+                desc: g.desc,
+                caseMark: Array.from(g.caseMarks).join(', '),
+                invoices: Array.from(g.invoices).join(', '),
+                totalPcs: g.totalPcs,
+                totalCtns: g.totalCtns,
+                pack: g.pack
+            }));
+        }
+
+        function updateKPIs() {
+            const selectedOrders = uploadedOrders.filter(o => o.selected);
+            const activeItems = getActiveRawItems();
+            const grouped = getGroupedJanItems(activeItems);
+
+            const totalCtns = grouped.reduce((s, g) => s + g.totalCtns, 0);
+            const totalPcs = grouped.reduce((s, g) => s + g.totalPcs, 0);
+
+            document.getElementById('kpi-selected-orders').textContent = selectedOrders.length;
+            document.getElementById('kpi-unique-skus').textContent = grouped.length;
+            document.getElementById('kpi-total-ctns').textContent = totalCtns.toLocaleString();
+            document.getElementById('kpi-total-pcs').textContent = `Total: ${totalPcs.toLocaleString()} PCS`;
+        }
+
+        // =========================================================================
+        // 4. PREVIEW TABLE RENDERING & LIVE EDITING
+        // =========================================================================
+        function setViewMode(mode) {
+            viewMode = mode;
+            const gBtn = document.getElementById('mode-grouped-btn');
+            const rBtn = document.getElementById('mode-raw-btn');
+            if (mode === 'grouped') {
+                gBtn.className = 'px-3 py-1 rounded-md bg-blue-600 text-white font-semibold transition';
+                rBtn.className = 'px-3 py-1 rounded-md text-slate-300 hover:text-white font-semibold transition';
+            } else {
+                rBtn.className = 'px-3 py-1 rounded-md bg-blue-600 text-white font-semibold transition';
+                gBtn.className = 'px-3 py-1 rounded-md text-slate-300 hover:text-white font-semibold transition';
+            }
+            renderPreviewTable();
+        }
+
+        function renderPreviewTable() {
+            const kw = (document.getElementById('search-input').value || '').trim().toLowerCase();
+            const thead = document.getElementById('preview-thead');
+            const tbody = document.getElementById('preview-tbody');
+
+            if (viewMode === 'grouped') {
+                const activeItems = getActiveRawItems();
+                let grouped = getGroupedJanItems(activeItems);
+                if (kw) {
+                    grouped = grouped.filter(g =>
+                        [g.jan, g.itemNo, g.desc, g.caseMark, g.invoices].some(v => String(v || '').toLowerCase().includes(kw))
+                    );
+                }
+
+                document.getElementById('table-summary-badge').textContent = `${grouped.length} Unique JAN Codes`;
+
+                thead.innerHTML = `
+                    <tr>
+                        <th class="py-2.5 px-3 border-b border-r text-center w-12">#</th>
+                        <th class="py-2.5 px-3 border-b border-r">JAN Code (掃描條碼)</th>
+                        <th class="py-2.5 px-3 border-b border-r">Item #</th>
+                        <th class="py-2.5 px-3 border-b border-r">貨品名稱 (Item Name)</th>
+                        <th class="py-2.5 px-3 border-b border-r">Case Mark</th>
+                        <th class="py-2.5 px-3 border-b border-r">來源單號 (Invoice)</th>
+                        <th class="py-2.5 px-3 border-b border-r text-right">應出箱數 (Target CTNS)</th>
+                        <th class="py-2.5 px-3 border-b text-right">總件數 (PCS)</th>
+                    </tr>
+                `;
+
+                if (grouped.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="8" class="py-10 text-center text-slate-400">沒有符合條件的貨品資料，請確認已勾選訂單。</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = grouped.map((g, idx) => `
+                    <tr class="hover:bg-emerald-50/40 transition">
+                        <td class="py-2 px-3 border-b border-r text-center text-slate-400">${idx + 1}</td>
+                        <td class="py-2 px-3 border-b border-r font-bold text-blue-700">${escapeHtml(g.jan)}</td>
+                        <td class="py-2 px-3 border-b border-r font-semibold text-slate-700">${escapeHtml(g.itemNo)}</td>
+                        <td class="py-2 px-3 border-b border-r font-sans text-slate-800 max-w-md truncate" title="${escapeHtml(g.desc)}">${escapeHtml(g.desc)}</td>
+                        <td class="py-2 px-3 border-b border-r text-slate-600">${escapeHtml(g.caseMark || '-')}</td>
+                        <td class="py-2 px-3 border-b border-r text-slate-500">${escapeHtml(g.invoices)}</td>
+                        <td class="py-2 px-3 border-b border-r text-right font-extrabold text-emerald-700 bg-emerald-50/30">${g.totalCtns}</td>
+                        <td class="py-2 px-3 border-b text-right text-slate-600">${g.totalPcs.toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            } else {
+                let allSelectedOrderItems = [];
+                uploadedOrders.forEach(ord => {
+                    if (!ord.selected) return;
+                    ord.items.forEach(item => allSelectedOrderItems.push(item));
+                });
+
+                if (kw) {
+                    allSelectedOrderItems = allSelectedOrderItems.filter(i =>
+                        [i.jan, i.itemNo, i.desc, i.caseMark, i.invoiceNo].some(v => String(v || '').toLowerCase().includes(kw))
+                    );
+                }
+
+                document.getElementById('table-summary-badge').textContent = `${allSelectedOrderItems.length} Order Lines`;
+
+                thead.innerHTML = `
+                    <tr>
+                        <th class="py-2.5 px-3 border-b border-r text-center w-12">納入</th>
+                        <th class="py-2.5 px-3 border-b border-r">Invoice No.</th>
+                        <th class="py-2.5 px-3 border-b border-r">JAN Code</th>
+                        <th class="py-2.5 px-3 border-b border-r">Item #</th>
+                        <th class="py-2.5 px-3 border-b border-r">貨品名稱</th>
+                        <th class="py-2.5 px-3 border-b border-r">Case Mark</th>
+                        <th class="py-2.5 px-3 border-b border-r text-right">應出箱數 (可修改)</th>
+                        <th class="py-2.5 px-3 border-b border-r text-right">Pack</th>
+                        <th class="py-2.5 px-3 border-b text-right">總件數 (PCS)</th>
+                    </tr>
+                `;
+
+                if (allSelectedOrderItems.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="9" class="py-10 text-center text-slate-400">沒有可顯示的訂單明細行。</td></tr>`;
+                    return;
+                }
+
+                tbody.innerHTML = allSelectedOrderItems.map(item => `
+                    <tr class="${item.included ? 'hover:bg-blue-50/40' : 'bg-slate-100 opacity-50'} transition">
+                        <td class="py-2 px-3 border-b border-r text-center">
+                            <input type="checkbox" ${item.included ? 'checked' : ''} onchange="toggleRawItem(${item.uid}, this.checked)"
+                                class="w-4 h-4 rounded text-emerald-600 cursor-pointer">
+                        </td>
+                        <td class="py-2 px-3 border-b border-r font-bold text-slate-700">${escapeHtml(item.invoiceNo)}</td>
+                        <td class="py-2 px-3 border-b border-r font-semibold text-blue-700">${escapeHtml(item.jan)}</td>
+                        <td class="py-2 px-3 border-b border-r text-slate-700">${escapeHtml(item.itemNo)}</td>
+                        <td class="py-2 px-3 border-b border-r font-sans text-slate-800 max-w-sm truncate">${escapeHtml(item.desc)}</td>
+                        <td class="py-2 px-3 border-b border-r text-slate-600">${escapeHtml(item.caseMark || '-')}</td>
+                        <td class="py-2 px-3 border-b border-r text-right">
+                            <input type="number" min="0" value="${item.ctns}" oninput="updateRawItemCtns(${item.uid}, this.value)"
+                                class="w-20 px-2 py-1 border border-slate-300 rounded text-right font-bold text-emerald-700 bg-white focus:ring-1 focus:ring-emerald-500">
+                        </td>
+                        <td class="py-2 px-3 border-b border-r text-right text-slate-500">${item.pack || '-'}</td>
+                        <td class="py-2 px-3 border-b text-right text-slate-700">${(Number(item.pcs) || 0).toLocaleString()}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        function toggleRawItem(uid, checked) {
+            for (const ord of uploadedOrders) {
+                const found = ord.items.find(i => i.uid === uid);
+                if (found) {
+                    found.included = checked;
+                    break;
+                }
+            }
+            renderOrderCards();
+            renderPreviewTable();
+        }
+
+        function updateRawItemCtns(uid, newCtns) {
+            const val = parseFloat(newCtns) || 0;
+            for (const ord of uploadedOrders) {
+                const found = ord.items.find(i => i.uid === uid);
+                if (found) {
+                    found.ctns = val;
+                    if (found.pack > 0) found.pcs = val * found.pack;
+                    break;
+                }
+            }
+            renderOrderCards();
+        }
+
+        // =========================================================================
+        // 5. MANUAL ADD ITEM MODAL
+        // =========================================================================
+        function openAddItemModal() {
+            const modal = document.getElementById('modal-add-item');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closeAddItemModal() {
+            const modal = document.getElementById('modal-add-item');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+        }
+
+        function confirmAddManualItem() {
+            const inv = document.getElementById('add-inv').value.trim() || 'EXTRA-ADD';
+            const jan = document.getElementById('add-jan').value.trim();
+            const itemNo = document.getElementById('add-itemno').value.trim();
+            const desc = document.getElementById('add-desc').value.trim();
+            const ctns = parseInt(document.getElementById('add-ctns').value, 10) || 0;
+            const pack = parseInt(document.getElementById('add-pack').value, 10) || 1;
+            const caseMark = document.getElementById('add-casemark').value.trim();
+
+            if (!jan || !desc || ctns <= 0) {
+                alert('請填寫有效的 JAN Code、貨品名稱及箱數！');
+                return;
+            }
+
+            let targetOrd = uploadedOrders.find(o => o.invoiceNo === inv);
+            if (!targetOrd) {
+                targetOrd = {
+                    id: 'ord_manual_' + Date.now(),
+                    fileName: 'Manual_Entry',
+                    invoiceNo: inv,
+                    consignee: 'Manual Added Items',
+                    destination: '-',
+                    deliveryMonth: '',
+                    selected: true,
+                    items: []
+                };
+                uploadedOrders.push(targetOrd);
+            }
+
+            targetOrd.selected = true;
+            targetOrd.items.push({
+                uid: itemUidCounter++,
+                invoiceNo: inv,
+                fileName: 'Manual_Entry',
+                itemNo,
+                matNo: '',
+                jan,
+                desc,
+                caseMark,
+                pcs: ctns * pack,
+                ctns,
+                pack,
+                cbm: 0,
+                included: true
+            });
+
+            closeAddItemModal();
+            renderOrderCards();
+            renderPreviewTable();
+            showToast('已新增貨品', `成功加入 JAN ${jan} (${ctns} CTNS)`, 'success');
+        }
+
+        // =========================================================================
+        // 6. WAREHOUSE SCAN CHECK EXCEL GENERATOR (ENHANCED VISUALS & DATA BARS)
+        // =========================================================================
+        async function buildWarehouseCheckWorkbookBuffer(rawItems, invoiceListArray) {
+            const groupedItems = getGroupedJanItems(rawItems);
+            const checkDate = document.getElementById('check-date-input').value.trim() || '20260801';
+            const maxScanRows = parseInt(document.getElementById('max-scan-rows').value, 10) || 15000;
+            const allInvoicesStr = invoiceListArray.join(', ');
+
+            const workbook = new ExcelJS.Workbook();
+            workbook.creator = 'Warehouse Loading & Scan Check System v2.2';
+            workbook.created = new Date();
+
+            // ---------------------------------------------------------------------
+            // SHEET 1: 掃貨對比_ScanCheck (Header on Rows 1-6, Data starts at Row 7)
+            // ---------------------------------------------------------------------
+            const ws = workbook.addWorksheet('掃貨對比_ScanCheck', {
+                views: [{ state: 'frozen', ySplit: 6, showGridLines: true }]
+            });
+
+            const thinBorder = {
+                top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+                right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+            };
+            const darkBorder = {
+                top: { style: 'thin', color: { argb: 'FF334155' } },
+                left: { style: 'thin', color: { argb: 'FF334155' } },
+                bottom: { style: 'thin', color: { argb: 'FF334155' } },
+                right: { style: 'thin', color: { argb: 'FF334155' } }
+            };
+
+            const DATA_START_ROW = 7;
+            const lastItemRow = DATA_START_ROW + groupedItems.length - 1;
+            const lastScanRow = DATA_START_ROW + maxScanRows - 1;
+
+            // --- ROW 1: TOP TITLE BANNER & DYNAMIC ALERT ---
+            ws.getRow(1).height = 28;
+            ws.mergeCells('A1:E1');
+            const titleCell = ws.getCell('A1');
+            titleCell.value = `📦 倉庫裝貨 Barcode Scan Check (${checkDate}) | 共 ${invoiceListArray.length} 張單`;
+            titleCell.font = { name: 'Microsoft JhengHei', size: 12, bold: true, color: { argb: 'FFFFFFFF' } };
+            titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F172A' } };
+            titleCell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+
+            ws.mergeCells('G1:O1');
+            const alertCell = ws.getCell('G1');
+            alertCell.value = {
+                formula: `IF(E2>0,"⚠️ 警告：發現 "&E2&" 箱【裝錯貨 / 不在本單】！請立即核對！",IF(O2>0,"⚠️ 注意：有 "&O2&" 款貨【裝多貨】，請檢查！",IF(N2>0,"⏳ 裝貨進行中：尚欠 "&N2&" 款貨未掃齊",IF(H2>0,"✅ 完美！全部貨品已掃齊，數量 100% 準確！","請開始在 B7 掃描條碼"))))`
+            };
+            alertCell.font = { name: 'Microsoft JhengHei', size: 12, bold: true, color: { argb: 'FF0F172A' } };
+            alertCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF08A' } };
+            alertCell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // --- ROW 2: KPI SUMMARY & TOP OVERALL PROGRESS % WITH DATA BAR ---
+            ws.getRow(2).height = 26;
+
+            // Left Scan KPIs (A2:E2)
+            ws.getCell('A2').value = '已掃總箱數:';
+            ws.getCell('A2').font = { name: 'Microsoft JhengHei', size: 10, bold: true };
+            ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'right' };
+
+            ws.getCell('B2').value = { formula: `COUNTA(B${DATA_START_ROW}:B${lastScanRow})` };
+            ws.getCell('B2').font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FF0369A1' } };
+            ws.getCell('B2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            ws.getCell('D2').value = '錯貨箱數:';
+            ws.getCell('D2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFDC2626' } };
+            ws.getCell('D2').alignment = { vertical: 'middle', horizontal: 'right' };
+
+            ws.getCell('E2').value = { formula: `COUNTIF(C${DATA_START_ROW}:C${lastScanRow},"❌ 錯貨!")` };
+            ws.getCell('E2').font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FFDC2626' } };
+            ws.getCell('E2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+            ws.getCell('E2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            // Right Checklist KPIs (G2:O2)
+            ws.getCell('G2').value = '應出箱數:';
+            ws.getCell('G2').font = { name: 'Microsoft JhengHei', size: 10, bold: true };
+            ws.getCell('G2').alignment = { vertical: 'middle', horizontal: 'right' };
+
+            ws.getCell('H2').value = { formula: `SUM(K${DATA_START_ROW}:K${lastItemRow})` };
+            ws.getCell('H2').font = { name: 'Calibri', size: 12, bold: true };
+            ws.getCell('H2').alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // Top Overall Scan % + Color Progress Bar (J2:K2)
+            ws.getCell('I2').value = '總掃描進度:';
+            ws.getCell('I2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF15803D' } };
+            ws.getCell('I2').alignment = { vertical: 'middle', horizontal: 'right' };
+
+            ws.mergeCells('J2:K2');
+            const topPctCell = ws.getCell('J2');
+            topPctCell.value = { formula: `IF(H2>0, SUM(L${DATA_START_ROW}:L${lastItemRow})/H2, 0)` };
+            topPctCell.numFmt = '0.0%';
+            topPctCell.font = { name: 'Calibri', size: 13, bold: true, color: { argb: 'FF0F172A' } };
+            topPctCell.alignment = { vertical: 'middle', horizontal: 'center' };
+            topPctCell.border = darkBorder;
+
+            ws.getCell('L2').value = { formula: `"尚欠 "&MAX(0, H2-SUM(L${DATA_START_ROW}:L${lastItemRow}))&" 箱"` };
+            ws.getCell('L2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFB91C1C' } };
+            ws.getCell('L2').alignment = { vertical: 'middle', horizontal: 'center' };
+
+            ws.getCell('M2').value = '欠貨款數:';
+            ws.getCell('M2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFDC2626' } };
+            ws.getCell('M2').alignment = { vertical: 'middle', horizontal: 'right' };
+
+            ws.getCell('N2').value = { formula: `COUNTIF(M${DATA_START_ROW}:M${lastItemRow},"<0")` };
+            ws.getCell('N2').font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FFDC2626' } };
+            ws.getCell('N2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } };
+            ws.getCell('N2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            ws.getCell('O2').value = { formula: `COUNTIF(M${DATA_START_ROW}:M${lastItemRow},">0")` };
+            ws.getCell('O2').font = { name: 'Calibri', size: 12, bold: true, color: { argb: 'FF1D4ED8' } };
+            ws.getCell('O2').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+            ws.getCell('O2').alignment = { horizontal: 'center', vertical: 'middle' };
+
+            // --- ROW 3: FULL ORDER / INVOICE NUMBERS BANNER (AUTO-WRAP, NEVER TRUNCATED) ---
+            const orderText = `📋 本表包含單號 (${invoiceListArray.length} 張):  ${allInvoicesStr}`;
+            const estimatedLines = Math.max(1, Math.ceil(orderText.length / 105));
+            ws.getRow(3).height = Math.max(24, estimatedLines * 19 + 6);
+
+            ws.mergeCells('A3:O3');
+            const orderBannerCell = ws.getCell('A3');
+            orderBannerCell.value = orderText;
+            orderBannerCell.font = { name: 'Microsoft JhengHei', size: 10.5, bold: true, color: { argb: 'FF1E3A8A' } };
+            orderBannerCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEFF6FF' } };
+            orderBannerCell.alignment = { vertical: 'middle', horizontal: 'left', wrapText: true, indent: 1 };
+            orderBannerCell.border = {
+                top: { style: 'thin', color: { argb: 'FF93C5FD' } },
+                bottom: { style: 'thin', color: { argb: 'FF93C5FD' } }
+            };
+
+            // --- ROW 4: SPACER ---
+            ws.getRow(4).height = 8;
+
+            // --- ROW 5: SECTION HEADERS ---
+            ws.getRow(5).height = 22;
+            ws.mergeCells('A5:E5');
+            const secLeft = ws.getCell('A5');
+            secLeft.value = `🔫 現場掃描區 (游標放於 B7 連續掃描，上限 ${maxScanRows.toLocaleString()} 箱)`;
+            secLeft.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+            secLeft.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF0F766E' } };
+            secLeft.alignment = { vertical: 'middle', horizontal: 'center' };
+
+            ws.mergeCells('G5:O5');
+            const secRight = ws.getCell('G5');
+            secRight.value = '📊 本單貨品實時對比表 (自動統計已掃箱數、欠幾箱、多幾箱及完成進度 %)';
+            secRight.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFFFFFFF' } };
+            secRight.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1D4ED8' } };
+            secRight.alignment = { vertical: 'middle', horizontal: 'center' };
+
+            // --- ROW 6: TABLE COLUMN HEADERS ---
+            ws.getRow(6).height = 24;
+            const leftHeaders = ['序號', 'Scan JAN Code (掃描槍輸入)', '對單結果', '掃描貨品名稱 (自動顯示)', '該款尚欠/多'];
+            leftHeaders.forEach((h, i) => {
+                const c = ws.getRow(6).getCell(i + 1);
+                c.value = h;
+                c.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFCCFBF1' } };
+                c.alignment = { vertical: 'middle', horizontal: 'center' };
+                c.border = darkBorder;
+            });
+
+            const rightHeaders = ['#', 'JAN Code (條碼)', 'Item #', '貨品名稱 (Item Description)', '應出箱數', '已掃箱數', '差異 (+/-)', '狀態提示', 'Scan 進度 %'];
+            rightHeaders.forEach((h, i) => {
+                const c = ws.getRow(6).getCell(i + 7);
+                c.value = h;
+                c.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+                c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
+                c.alignment = { vertical: 'middle', horizontal: 'center' };
+                c.border = darkBorder;
+            });
+
+            // --- POPULATE RIGHT SIDE CHECKLIST ITEMS (ROWS 7 to lastItemRow) ---
+            groupedItems.forEach((item, idx) => {
+                const r = DATA_START_ROW + idx;
+                const row = ws.getRow(r);
+                row.height = 21;
+
+                // G: Seq
+                const cG = row.getCell(7);
+                cG.value = idx + 1;
+                cG.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // H: JAN Code
+                const cH = row.getCell(8);
+                cH.value = /^\d+$/.test(item.jan) ? Number(item.jan) : item.jan;
+                cH.numFmt = '0';
+                cH.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
+                cH.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // I: Item #
+                const cI = row.getCell(9);
+                cI.value = item.itemNo;
+                cI.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // J: Description
+                const cJ = row.getCell(10);
+                cJ.value = item.desc;
+                cJ.alignment = { horizontal: 'left', vertical: 'middle' };
+
+                // K: Target CTNS
+                const cK = row.getCell(11);
+                cK.value = Number(item.totalCtns) || 0;
+                cK.font = { name: 'Calibri', size: 11, bold: true };
+                cK.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // L: Scanned CTNS
+                const cL = row.getCell(12);
+                cL.value = { formula: `COUNTIF($B$${DATA_START_ROW}:$B$${lastScanRow},H${r})` };
+                cL.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF0369A1' } };
+                cL.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // M: Diff (Scanned - Target)
+                const cM = row.getCell(13);
+                cM.value = { formula: `L${r}-K${r}` };
+                cM.font = { name: 'Calibri', size: 11, bold: true };
+                cM.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // N: Human-Readable Status
+                const cN = row.getCell(14);
+                cN.value = {
+                    formula: `IF(M${r}=0,"✅ 完成",IF(M${r}>0,"🔵 多 "&M${r}&" 箱","🔴 欠 "&ABS(M${r})&" 箱"))`
+                };
+                cN.font = { name: 'Microsoft JhengHei', size: 10, bold: true };
+                cN.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                // O: Per-Item Scanned % (with Color Progress Bar)
+                const cO = row.getCell(15);
+                cO.value = { formula: `IF(K${r}>0, L${r}/K${r}, 0)` };
+                cO.numFmt = '0%';
+                cO.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };
+                cO.alignment = { horizontal: 'center', vertical: 'middle' };
+
+                for (let colIdx = 7; colIdx <= 15; colIdx++) {
+                    const cell = row.getCell(colIdx);
+                    if (!cell.font) cell.font = { name: 'Calibri', size: 10 };
+                    cell.border = thinBorder;
+                }
+            });
+
+            // --- POPULATE LEFT SIDE SCANNER ROWS (ROWS 7 to lastScanRow) ---
+            for (let i = 0; i < maxScanRows; i++) {
+                const r = DATA_START_ROW + i;
+                const row = ws.getRow(r);
+                if (!row.height) row.height = 19;
+
+                // A: Auto Seq
+                const cA = row.getCell(1);
+                cA.value = { formula: `IF(B${r}="","",ROW()-${DATA_START_ROW - 1})` };
+                cA.alignment = { horizontal: 'center', vertical: 'middle' };
+                cA.font = { name: 'Calibri', size: 10, color: { argb: 'FF64748B' } };
+
+                // B: Scanner Input Cell
+                const cB = row.getCell(2);
+                cB.numFmt = '0';
+                cB.alignment = { horizontal: 'center', vertical: 'middle' };
+                cB.font = { name: 'Calibri', size: 11, bold: true };
+                cB.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEFCE8' } };
+
+                // C: Match Check
+                const cC = row.getCell(3);
+                cC.value = {
+                    formula: `IF(B${r}="","",IF(COUNTIF($H$${DATA_START_ROW}:$H$${lastItemRow},B${r})>0,"✅ OK","❌ 錯貨!"))`
+                };
+                cC.alignment = { horizontal: 'center', vertical: 'middle' };
+                cC.font = { name: 'Microsoft JhengHei', size: 10, bold: true };
+
+                // D: Lookup Item Name immediately upon scan
+                const cD = row.getCell(4);
+                cD.value = {
+                    formula: `IF(B${r}="","",IFERROR(INDEX($J$${DATA_START_ROW}:$J$${lastItemRow},MATCH(B${r},$H$${DATA_START_ROW}:$H$${lastItemRow},0)),"⚠️ 非本單貨品"))`
+                };
+                cD.alignment = { horizontal: 'left', vertical: 'middle' };
+                cD.font = { name: 'Calibri', size: 10 };
+
+                // E: Live Remaining Diff for this scanned item (WITH CONDITIONAL FORMATTING COLORS)
+                const cE = row.getCell(5);
+                cE.value = {
+                    formula: `IF(B${r}="","",IFERROR(INDEX($N$${DATA_START_ROW}:$N$${lastItemRow},MATCH(B${r},$H$${DATA_START_ROW}:$H$${lastItemRow},0)),"-"))`
+                };
+                cE.alignment = { horizontal: 'center', vertical: 'middle' };
+                cE.font = { name: 'Microsoft JhengHei', size: 10, bold: true };
+
+                for (let colIdx = 1; colIdx <= 5; colIdx++) {
+                    row.getCell(colIdx).border = thinBorder;
+                }
+            }
+
+            // =====================================================================
+            // CONDITIONAL FORMATTING: COLORS & PROGRESS DATA BARS
+            // =====================================================================
+
+            // 1. Top Overall Progress % Data Bar (J2:K2)
+            ws.addConditionalFormatting({
+                ref: 'J2:K2',
+                rules: [
+                    {
+                        type: 'dataBar',
+                        minLength: 0,
+                        maxLength: 100,
+                        showValue: true,
+                        gradient: true,
+                        color: { argb: 'FF10B981' },
+                        cfvo: [
+                            { type: 'num', value: 0 },
+                            { type: 'num', value: 1 }
+                        ]
+                    }
+                ]
+            });
+
+            // 2. Column O Per-Item Scan % Data Bar (O7:O{lastItemRow})
+            ws.addConditionalFormatting({
+                ref: `O${DATA_START_ROW}:O${lastItemRow}`,
+                rules: [
+                    {
+                        type: 'dataBar',
+                        minLength: 0,
+                        maxLength: 100,
+                        showValue: true,
+                        gradient: true,
+                        color: { argb: 'FF22C55E' },
+                        cfvo: [
+                            { type: 'num', value: 0 },
+                            { type: 'num', value: 1 }
+                        ]
+                    }
+                ]
+            });
+
+            // 3. Column E (Left Scanner Live Status: 完成 / 欠 / 多) Color Highlights
+            ws.addConditionalFormatting({
+                ref: `E${DATA_START_ROW}:E${lastScanRow}`,
+                rules: [
+                    {
+                        type: 'containsText',
+                        operator: 'containsText',
+                        text: '完成',
+                        style: {
+                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDCFCE7' } },
+                            font: { color: { argb: 'FF15803D' }, bold: true }
+                        }
+                    },
+                    {
+                        type: 'containsText',
+                        operator: 'containsText',
+                        text: '欠',
+                        style: {
+                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEE2E2' } },
+                            font: { color: { argb: 'FFB91C1C' }, bold: true }
+                        }
+                    },
+                    {
+                        type: 'containsText',
+                        operator: 'containsText',
+                        text: '多',
+                        style: {
+                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDBEAFE' } },
+                            font: { color: { argb: 'FF1D4ED8' }, bold: true }
+                        }
+                    }
+                ]
+            });
+
+            // 4. Right Checklist Diff & Status Colors (M7:N{lastItemRow})
+            ws.addConditionalFormatting({
+                ref: `M${DATA_START_ROW}:N${lastItemRow}`,
+                rules: [
+                    {
+                        type: 'expression',
+                        formulae: [`$M${DATA_START_ROW}<0`],
+                        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEE2E2' } }, font: { color: { argb: 'FFB91C1C' }, bold: true } }
+                    },
+                    {
+                        type: 'expression',
+                        formulae: [`$M${DATA_START_ROW}=0`],
+                        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDCFCE7' } }, font: { color: { argb: 'FF15803D' }, bold: true } }
+                    },
+                    {
+                        type: 'expression',
+                        formulae: [`$M${DATA_START_ROW}>0`],
+                        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDBEAFE' } }, font: { color: { argb: 'FF1D4ED8' }, bold: true } }
+                    }
+                ]
+            });
+
+            // 5. Left Scanner Wrong Item Alert (C7:C{lastScanRow})
+            ws.addConditionalFormatting({
+                ref: `C${DATA_START_ROW}:C${lastScanRow}`,
+                rules: [
+                    {
+                        type: 'containsText',
+                        operator: 'containsText',
+                        text: '錯貨',
+                        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFECACA' } }, font: { color: { argb: 'FFDC2626' }, bold: true } }
+                    },
+                    {
+                        type: 'containsText',
+                        operator: 'containsText',
+                        text: 'OK',
+                        style: { fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFDCFCE7' } }, font: { color: { argb: 'FF15803D' }, bold: true } }
+                    }
+                ]
+            });
+
+            // Set Column Widths
+            ws.columns = [
+                { width: 9 },   // A: Seq
+                { width: 22 },  // B: Scan JAN
+                { width: 12 },  // C: Match
+                { width: 32 },  // D: Scanned Name
+                { width: 15 },  // E: Live Status (Colored)
+                { width: 3 },   // F: Spacer
+                { width: 6 },   // G: #
+                { width: 18 },  // H: JAN Code
+                { width: 13 },  // I: Item #
+                { width: 42 },  // J: Description
+                { width: 11 },  // K: Target CTNS
+                { width: 11 },  // L: Scanned CTNS
+                { width: 11 },  // M: Diff
+                { width: 15 },  // N: Status
+                { width: 16 }   // O: Per-item Scan % + Progress Bar
+            ];
+
+            // ---------------------------------------------------------------------
+            // SHEET 2: 訂單明細_OrderData (Reference Backup)
+            // ---------------------------------------------------------------------
+            const wsRef = workbook.addWorksheet('訂單明細_OrderData', { views: [{ showGridLines: true }] });
+            const refHeaders = ['Invoice No.', 'Item #', 'Material No.', 'JAN Code', 'Item Description', 'Case Mark', 'Target CTNS', 'Pack (PCS/CTN)', 'Total PCS', 'CBM'];
+            const rHead = wsRef.getRow(1);
+            rHead.height = 22;
+            refHeaders.forEach((h, idx) => {
+                const cell = rHead.getCell(idx + 1);
+                cell.value = h;
+                cell.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FFFFFFFF' } };
+                cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF334155' } };
+                cell.alignment = { horizontal: 'center', vertical: 'middle' };
+            });
+
+            rawItems.forEach((item, idx) => {
+                const row = wsRef.getRow(idx + 2);
+                row.getCell(1).value = item.invoiceNo;
+                row.getCell(2).value = item.itemNo;
+                row.getCell(3).value = item.matNo;
+                row.getCell(4).value = /^\d+$/.test(item.jan) ? Number(item.jan) : item.jan;
+                row.getCell(4).numFmt = '0';
+                row.getCell(5).value = item.desc;
+                row.getCell(6).value = item.caseMark;
+                row.getCell(7).value = Number(item.ctns) || 0;
+                row.getCell(8).value = Number(item.pack) || 0;
+                row.getCell(9).value = Number(item.pcs) || 0;
+                row.getCell(10).value = Number(item.cbm) || 0;
+            });
+
+            wsRef.columns = [
+                { width: 16 }, { width: 13 }, { width: 15 }, { width: 18 },
+                { width: 45 }, { width: 18 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 12 }
+            ];
+
+            return await workbook.xlsx.writeBuffer();
+        }
+
+        // =========================================================================
+        // 7. EXPORT ACTIONS (MERGED OR SEPARATE ZIP)
+        // =========================================================================
+        async function exportMergedCheckTool() {
+            const activeItems = getActiveRawItems();
+            if (activeItems.length === 0) {
+                return showToast('沒有可匯出的資料', '請先上傳並勾選至少一張訂單！', 'warning');
+            }
+
+            const invoiceList = [...new Set(activeItems.map(i => i.invoiceNo).filter(Boolean))];
+            const fileLabel = invoiceList.length === 1
+                ? invoiceList[0]
+                : `${invoiceList.slice(0, 2).join('_')}_等${invoiceList.length}單`;
+
+            const checkDate = document.getElementById('check-date-input').value.trim() || 'ScanCheck';
+            const buffer = await buildWarehouseCheckWorkbookBuffer(activeItems, invoiceList);
+            const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+            triggerDownload(blob, `裝貨CheckTools_${fileLabel}_${checkDate}.xlsx`);
+            showToast('匯出成功', `已生成裝貨檢查表（共 ${invoiceList.length} 張單 / ${getGroupedJanItems(activeItems).length} 款貨）！`, 'success');
+        }
+
+        async function exportSelectedSeparatelyZip() {
+            const selectedOrders = uploadedOrders.filter(o => o.selected && o.items.some(i => i.included));
+            if (selectedOrders.length === 0) {
+                return showToast('沒有可匯出的訂單', '請先勾選至少一張包含貨品的訂單！', 'warning');
+            }
+
+            const zip = new JSZip();
+            const checkDate = document.getElementById('check-date-input').value.trim() || 'ScanCheck';
+
+            for (const ord of selectedOrders) {
+                const ordItems = ord.items.filter(i => i.included);
+                const buffer = await buildWarehouseCheckWorkbookBuffer(ordItems, [ord.invoiceNo]);
+                zip.file(`裝貨CheckTools_${ord.invoiceNo}_${checkDate}.xlsx`, buffer);
+            }
+
+            const content = await zip.generateAsync({ type: 'blob' });
+            triggerDownload(content, `Warehouse_ScanCheck_Batch_${checkDate}.zip`);
+            showToast('批次打包完成', `已將 ${selectedOrders.length} 份獨立裝貨 Check Tool 打包為 ZIP！`, 'success');
+        }
+
+        function triggerDownload(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
+        }
+
+        let toastTimer = null;
+        function showToast(title, msg, type = 'success') {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            document.getElementById('toast-title').textContent = title;
+            document.getElementById('toast-msg').textContent = msg;
+            icon.className = type === 'success'
+                ? 'fa-solid fa-circle-check text-emerald-400 text-lg'
+                : type === 'warning'
+                    ? 'fa-solid fa-triangle-exclamation text-amber-400 text-lg'
+                    : 'fa-solid fa-circle-info text-blue-400 text-lg';
+            toast.classList.remove('translate-y-20', 'opacity-0');
+            if (toastTimer) clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => toast.classList.add('translate-y-20', 'opacity-0'), 3800);
+        }
+    </script>
+</body>
+</html>
