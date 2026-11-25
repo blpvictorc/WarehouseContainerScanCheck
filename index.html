@@ -944,7 +944,7 @@
             ws.getCell('H2').alignment = { vertical: 'middle', horizontal: 'center' };
 
             ws.getCell('I2').value = '總掃描進度:';
-            ws.getCell('I2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF15803D' } };
+            ws.getCell('I2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF0369A1' } };
             ws.getCell('I2').alignment = { vertical: 'middle', horizontal: 'right' };
 
             ws.mergeCells('J2:K2');
@@ -1151,16 +1151,26 @@
             // =====================================================================
             // CONDITIONAL FORMATTING
             // =====================================================================
+
+            // 1. Top Overall Progress % (J2:K2): Solid Sky Blue Bar (#38BDF8) + Full Emerald Fill (#4ADE80) at 100%
             ws.addConditionalFormatting({
                 ref: 'J2:K2',
                 rules: [
+                    {
+                        type: 'expression',
+                        formulae: ['$J$2>=1'],
+                        style: {
+                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FF4ADE80' } },
+                            font: { color: { argb: 'FF064E3B' }, bold: true }
+                        }
+                    },
                     {
                         type: 'dataBar',
                         minLength: 0,
                         maxLength: 100,
                         showValue: true,
-                        gradient: true,
-                        color: { argb: 'FF10B981' },
+                        gradient: false,
+                        color: { argb: 'FF38BDF8' },
                         cfvo: [
                             { type: 'num', value: 0 },
                             { type: 'num', value: 1 }
@@ -1177,7 +1187,7 @@
                         minLength: 0,
                         maxLength: 100,
                         showValue: true,
-                        gradient: true,
+                        gradient: false,
                         color: { argb: 'FF22C55E' },
                         cfvo: [
                             { type: 'num', value: 0 },
