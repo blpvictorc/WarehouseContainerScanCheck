@@ -419,7 +419,8 @@
             }
 
             let headerRowIdx = -1;
-            let colMap = { itemNo: 0, matNo: 1, jan: 2, desc: 3, caseMark: 5, pcs: 6, ctns: 7, pack: 8, cbm: 10 };
+            // SO 工作表預設欄位：A=0(Item#), B=1(Mat#), C=2(JAN), D=3(Desc), F=5(CaseMark), G=6(pcs), H=7(CTNS), I=8(pcs/ctns), J=9(kgs), K=10(M3)
+            let colMap = { itemNo: 0, matNo: 1, jan: 2, desc: 3, caseMark: 5, pcs: 6, ctns: 7, pack: 8, kgs: 9, cbm: 10 };
 
             for (let r = 20; r < Math.min(40, aoa.length); r++) {
                 const row = aoa[r] || [];
@@ -436,6 +437,7 @@
                         else if (h === 'pcs' || h.includes('pc(s)')) colMap.pcs = idx;
                         else if (h === 'ctns' || h.includes('ctn(s)')) colMap.ctns = idx;
                         else if (h.includes('pcs/ctns') || h.includes('pack')) colMap.pack = idx;
+                        else if (h === 'kgs' || h === 'kg' || h.includes('gross weight')) colMap.kgs = idx;
                         else if (h === 'm3' || h.includes('cbm')) colMap.cbm = idx;
                     });
                     break;
@@ -456,6 +458,7 @@
                     const ctnsVal = parseFloat(row[colMap.ctns]) || 0;
                     const pcsVal = parseFloat(row[colMap.pcs]) || 0;
                     const packVal = parseFloat(row[colMap.pack]) || (ctnsVal > 0 ? Math.round(pcsVal / ctnsVal) : 0);
+                    const kgsVal = parseFloat(row[colMap.kgs]) || 0;
                     const cbmVal = parseFloat(row[colMap.cbm]) || 0;
 
                     if (ctnsVal > 0 || pcsVal > 0) {
@@ -471,6 +474,7 @@
                             pcs: pcsVal,
                             ctns: ctnsVal,
                             pack: packVal,
+                            kgs: kgsVal,
                             cbm: cbmVal,
                             included: true
                         });
@@ -841,6 +845,7 @@
                 pcs: ctns > 0 ? ctns * pack : pack,
                 ctns,
                 pack,
+                kgs: 0,
                 cbm: 0,
                 included: true
             });
@@ -888,10 +893,6 @@
             const lastItemRow = DATA_START_ROW + groupedItems.length - 1;
             const lastScanRow = DATA_START_ROW + maxScanRows - 1;
 
-            // Hidden helper columns:
-            // Col F (6): Unique Wrong-Item SKU flag per scanned row -> =IF(C7="❌ 錯貨!", IF(COUNTIF($B$7:B7, B7)=1, 1, 0), 0)
-            // Col P (16): Valid matched scanned CTNs per checklist item (0 for Sample or capped at K) -> =IF(K7=0, 0, MIN(L7, K7))
-
             // --- ROW 1: TOP TITLE BANNER & DYNAMIC ALERT ---
             ws.getRow(1).height = 28;
             ws.mergeCells('A1:E1');
@@ -913,7 +914,6 @@
             // --- ROW 2: KPI SUMMARY & TOP OVERALL PROGRESS % (VALID ITEMS ONLY) ---
             ws.getRow(2).height = 28;
 
-            // Left Scan KPIs: A2:B2 = Total Scanned, D2:E2 = Wrong Items in "X SKU (Y箱)" (Yellow bg, Brown text)
             ws.getCell('A2').value = '已掃總箱數:';
             ws.getCell('A2').font = { name: 'Microsoft JhengHei', size: 10, bold: true };
             ws.getCell('A2').alignment = { vertical: 'middle', horizontal: 'right' };
@@ -926,7 +926,6 @@
             ws.getCell('D2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF78350F' } };
             ws.getCell('D2').alignment = { vertical: 'middle', horizontal: 'right' };
 
-            // E2: Wrong SKU & CTN count -> "1 SKU (1箱)" (Yellow background #FEF08A + Dark Brown bold text #78350F)
             const wrongSummaryCell = ws.getCell('E2');
             wrongSummaryCell.value = {
                 formula: `SUM(F${DATA_START_ROW}:F${lastScanRow})&" SKU ("&COUNTIF(C${DATA_START_ROW}:C${lastScanRow},"❌ 錯貨!")&"箱)"`
@@ -936,7 +935,6 @@
             wrongSummaryCell.alignment = { horizontal: 'center', vertical: 'middle' };
             wrongSummaryCell.border = darkBorder;
 
-            // Right Checklist KPIs (G2:O2)
             ws.getCell('G2').value = '應出箱數:';
             ws.getCell('G2').font = { name: 'Microsoft JhengHei', size: 10, bold: true };
             ws.getCell('G2').alignment = { vertical: 'middle', horizontal: 'right' };
@@ -945,7 +943,6 @@
             ws.getCell('H2').font = { name: 'Calibri', size: 12, bold: true };
             ws.getCell('H2').alignment = { vertical: 'middle', horizontal: 'center' };
 
-            // Top Overall Scan % + Color Progress Bar (J2:K2) -> ONLY COUNTS VALID MATCHED CTNS (Col P)
             ws.getCell('I2').value = '總掃描進度:';
             ws.getCell('I2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF15803D' } };
             ws.getCell('I2').alignment = { vertical: 'middle', horizontal: 'right' };
@@ -958,17 +955,14 @@
             topPctCell.alignment = { vertical: 'middle', horizontal: 'center' };
             topPctCell.border = darkBorder;
 
-            // L2: Remaining valid cartons needed
             ws.getCell('L2').value = { formula: `"尚欠 "&MAX(0, H2-SUM(P${DATA_START_ROW}:P${lastItemRow}))&" 箱"` };
             ws.getCell('L2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FFB91C1C' } };
             ws.getCell('L2').alignment = { vertical: 'middle', horizontal: 'center' };
 
-            // M2: Label for Short/Over
             ws.getCell('M2').value = '欠貨 / 多貨:';
             ws.getCell('M2').font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF334155' } };
             ws.getCell('M2').alignment = { vertical: 'middle', horizontal: 'right' };
 
-            // N2: Short SKUs & CTNs -> "9 SKU (38箱)" (Red fill, Red text)
             const shortSummaryCell = ws.getCell('N2');
             shortSummaryCell.value = {
                 formula: `COUNTIF(M${DATA_START_ROW}:M${lastItemRow},"<0")&" SKU ("&ABS(SUMIF(M${DATA_START_ROW}:M${lastItemRow},"<0",M${DATA_START_ROW}:M${lastItemRow}))&"箱)"`
@@ -978,7 +972,6 @@
             shortSummaryCell.alignment = { horizontal: 'center', vertical: 'middle' };
             shortSummaryCell.border = darkBorder;
 
-            // O2: Over SKUs & CTNs -> "1 SKU (4箱)" (Blue fill, Blue text)
             const overSummaryCell = ws.getCell('O2');
             overSummaryCell.value = {
                 formula: `COUNTIF(M${DATA_START_ROW}:M${lastItemRow},">0")&" SKU ("&SUMIF(M${DATA_START_ROW}:M${lastItemRow},">0",M${DATA_START_ROW}:M${lastItemRow})&"箱)"`
@@ -1037,7 +1030,7 @@
 
             const rightHeaders = ['#', 'JAN Code (條碼)', 'Item #', '貨品名稱 (Item Description)', '應出箱數', '已掃箱數', '差異 (+/-)', '狀態提示', 'Scan 進度 %'];
             rightHeaders.forEach((h, i) => {
-                const c = ws.getRow(6).getCell(i + 7); // Col G = 7 ... Col O = 15
+                const c = ws.getRow(6).getCell(i + 7);
                 c.value = h;
                 c.font = { name: 'Microsoft JhengHei', size: 10, bold: true, color: { argb: 'FF0F172A' } };
                 c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDBEAFE' } };
@@ -1051,47 +1044,39 @@
                 const row = ws.getRow(r);
                 row.height = 21;
 
-                // G: Seq
                 const cG = row.getCell(7);
                 cG.value = idx + 1;
                 cG.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // H: JAN Code
                 const cH = row.getCell(8);
                 cH.value = /^\d+$/.test(item.jan) ? Number(item.jan) : item.jan;
                 cH.numFmt = '0';
                 cH.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF1E3A8A' } };
                 cH.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // I: Item #
                 const cI = row.getCell(9);
                 cI.value = item.itemNo;
                 cI.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // J: Description
                 const cJ = row.getCell(10);
                 cJ.value = item.desc;
                 cJ.alignment = { horizontal: 'left', vertical: 'middle' };
 
-                // K: Target CTNS (0 = Sample)
                 const cK = row.getCell(11);
                 cK.value = Number(item.totalCtns) || 0;
                 cK.font = { name: 'Calibri', size: 11, bold: true };
                 cK.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // L: Scanned CTNS -> If Target CTNS (K) = 0, show "Sample"
                 const cL = row.getCell(12);
                 cL.value = { formula: `IF(K${r}=0,"Sample",COUNTIF($B$${DATA_START_ROW}:$B$${lastScanRow},H${r}))` };
                 cL.font = { name: 'Calibri', size: 11, bold: true, color: { argb: 'FF0369A1' } };
                 cL.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // M: Diff -> If Target CTNS (K) = 0, show "Sample", else Scanned - Target
                 const cM = row.getCell(13);
                 cM.value = { formula: `IF(K${r}=0,"Sample",L${r}-K${r})` };
                 cM.font = { name: 'Calibri', size: 11, bold: true };
                 cM.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // N: Human-Readable Status -> If Target CTNS (K) = 0, show "Sample"
                 const cN = row.getCell(14);
                 cN.value = {
                     formula: `IF(K${r}=0,"Sample",IF(M${r}=0,"✅ 完成",IF(M${r}>0,"🔵 多 "&M${r}&" 箱","🔴 欠 "&ABS(M${r})&" 箱")))`
@@ -1099,14 +1084,12 @@
                 cN.font = { name: 'Microsoft JhengHei', size: 10, bold: true };
                 cN.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // O: Per-Item Scanned % -> If Target CTNS (K) = 0, show "Sample", else L/K
                 const cO = row.getCell(15);
                 cO.value = { formula: `IF(K${r}=0,"Sample",L${r}/K${r})` };
                 cO.numFmt = '0%';
                 cO.font = { name: 'Calibri', size: 10.5, bold: true, color: { argb: 'FF0F172A' } };
                 cO.alignment = { horizontal: 'center', vertical: 'middle' };
 
-                // P (Col 16 - Hidden Helper): Valid Capped Scanned CTNs -> 0 if Sample, else MIN(L, K)
                 const cP = row.getCell(16);
                 cP.value = { formula: `IF(K${r}=0,0,MIN(L${r},K${r}))` };
 
@@ -1123,20 +1106,17 @@
                 const row = ws.getRow(r);
                 if (!row.height) row.height = 19;
 
-                // A: Auto Seq
                 const cA = row.getCell(1);
                 cA.value = { formula: `IF(B${r}="","",ROW()-${DATA_START_ROW - 1})` };
                 cA.alignment = { horizontal: 'center', vertical: 'middle' };
                 cA.font = { name: 'Calibri', size: 10, color: { argb: 'FF64748B' } };
 
-                // B: Scanner Input Cell
                 const cB = row.getCell(2);
                 cB.numFmt = '0';
                 cB.alignment = { horizontal: 'center', vertical: 'middle' };
                 cB.font = { name: 'Calibri', size: 11, bold: true };
                 cB.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEFCE8' } };
 
-                // C: Match Check
                 const cC = row.getCell(3);
                 cC.value = {
                     formula: `IF(B${r}="","",IF(COUNTIF($H$${DATA_START_ROW}:$H$${lastItemRow},B${r})>0,"✅ OK","❌ 錯貨!"))`
@@ -1144,7 +1124,6 @@
                 cC.alignment = { horizontal: 'center', vertical: 'middle' };
                 cC.font = { name: 'Microsoft JhengHei', size: 10, bold: true };
 
-                // D: Lookup Item Name immediately upon scan
                 const cD = row.getCell(4);
                 cD.value = {
                     formula: `IF(B${r}="","",IFERROR(INDEX($J$${DATA_START_ROW}:$J$${lastItemRow},MATCH(B${r},$H$${DATA_START_ROW}:$H$${lastItemRow},0)),"⚠️ 非本單貨品"))`
@@ -1152,7 +1131,6 @@
                 cD.alignment = { horizontal: 'left', vertical: 'middle' };
                 cD.font = { name: 'Calibri', size: 10 };
 
-                // E: Live Remaining Diff for this scanned item (shows "Sample" if target CTNS = 0)
                 const cE = row.getCell(5);
                 cE.value = {
                     formula: `IF(B${r}="","",IFERROR(INDEX($N$${DATA_START_ROW}:$N$${lastItemRow},MATCH(B${r},$H$${DATA_START_ROW}:$H$${lastItemRow},0)),"-"))`
@@ -1160,7 +1138,6 @@
                 cE.alignment = { horizontal: 'center', vertical: 'middle' };
                 cE.font = { name: 'Microsoft JhengHei', size: 10, bold: true };
 
-                // F (Col 6 - Hidden Helper): Unique Wrong SKU counter
                 const cF = row.getCell(6);
                 cF.value = {
                     formula: `IF(C${r}="❌ 錯貨!",IF(COUNTIF($B$${DATA_START_ROW}:B${r},B${r})=1,1,0),0)`
@@ -1172,10 +1149,8 @@
             }
 
             // =====================================================================
-            // CONDITIONAL FORMATTING: COLORS, SAMPLE HIGHLIGHTS & DATA BARS
+            // CONDITIONAL FORMATTING
             // =====================================================================
-
-            // 1. Top Overall Progress % Data Bar (J2:K2)
             ws.addConditionalFormatting({
                 ref: 'J2:K2',
                 rules: [
@@ -1194,7 +1169,6 @@
                 ]
             });
 
-            // 2. Column O Per-Item Scan % Data Bar (O7:O{lastItemRow}) - Excel automatically ignores text "Sample"
             ws.addConditionalFormatting({
                 ref: `O${DATA_START_ROW}:O${lastItemRow}`,
                 rules: [
@@ -1213,7 +1187,6 @@
                 ]
             });
 
-            // 3. Column E (Left Scanner Live Status: Sample / 完成 / 欠 / 多) Color Highlights
             ws.addConditionalFormatting({
                 ref: `E${DATA_START_ROW}:E${lastScanRow}`,
                 rules: [
@@ -1222,8 +1195,8 @@
                         operator: 'containsText',
                         text: 'Sample',
                         style: {
-                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEF9C3' } }, // Light Yellow
-                            font: { color: { argb: 'FF92400E' }, bold: true } // Brown-Yellow text
+                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEF9C3' } },
+                            font: { color: { argb: 'FF92400E' }, bold: true }
                         }
                     },
                     {
@@ -1256,7 +1229,6 @@
                 ]
             });
 
-            // 4. Right Checklist Columns L:O (Sample Light Yellow + Brown-Yellow Text, plus Short/Complete/Over)
             ws.addConditionalFormatting({
                 ref: `L${DATA_START_ROW}:O${lastItemRow}`,
                 rules: [
@@ -1264,8 +1236,8 @@
                         type: 'expression',
                         formulae: [`$K${DATA_START_ROW}=0`],
                         style: {
-                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEF9C3' } }, // Light Yellow (#FEF9C3)
-                            font: { color: { argb: 'FF92400E' }, bold: true } // Brown-Yellow (#92400E)
+                            fill: { type: 'pattern', pattern: 'solid', bgColor: { argb: 'FFFEF9C3' } },
+                            font: { color: { argb: 'FF92400E' }, bold: true }
                         }
                     }
                 ]
@@ -1292,7 +1264,6 @@
                 ]
             });
 
-            // 5. Left Scanner Wrong Item Alert (C7:C{lastScanRow})
             ws.addConditionalFormatting({
                 ref: `C${DATA_START_ROW}:C${lastScanRow}`,
                 rules: [
@@ -1311,37 +1282,35 @@
                 ]
             });
 
-            // Set Column Widths & Hide Helper Columns (F & P)
             ws.columns = [
-                { width: 10 },  // A: Seq
-                { width: 24 },  // B: Scan JAN
-                { width: 13 },  // C: Match
-                { width: 32 },  // D: Scanned Name
-                { width: 18 },  // E: Live Status / Wrong Summary ("1 SKU (1箱)")
-                { width: 3 },   // F: Spacer / Hidden Helper
-                { width: 8 },   // G: #
-                { width: 18 },  // H: JAN Code
-                { width: 13 },  // I: Item #
-                { width: 42 },  // J: Description
-                { width: 11 },  // K: Target CTNS
-                { width: 12 },  // L: Scanned CTNS
-                { width: 12 },  // M: Diff
-                { width: 18 },  // N: Status / Short Summary ("9 SKU (38箱)")
-                { width: 18 },  // O: Per-item Scan % / Over Summary ("1 SKU (4箱)")
-                { width: 2, hidden: true } // P: Hidden Valid Capped Scanned CTNS
+                { width: 10 },
+                { width: 24 },
+                { width: 13 },
+                { width: 32 },
+                { width: 18 },
+                { width: 3 },
+                { width: 8 },
+                { width: 18 },
+                { width: 13 },
+                { width: 42 },
+                { width: 11 },
+                { width: 12 },
+                { width: 12 },
+                { width: 18 },
+                { width: 18 },
+                { width: 2, hidden: true }
             ];
 
-            // Hide text in Col F helper cells by matching background color
             for (let i = 0; i < maxScanRows; i++) {
                 const cF = ws.getRow(DATA_START_ROW + i).getCell(6);
                 cF.font = { color: { argb: 'FFFFFFFF' }, size: 8 };
             }
 
             // ---------------------------------------------------------------------
-            // SHEET 2: 訂單明細_OrderData (Reference Backup)
+            // SHEET 2: 訂單明細_OrderData (Reference Backup with KGS & M3 from SO Col J & K)
             // ---------------------------------------------------------------------
             const wsRef = workbook.addWorksheet('訂單明細_OrderData', { views: [{ showGridLines: true }] });
-            const refHeaders = ['Invoice No.', 'Item #', 'Material No.', 'JAN Code', 'Item Description', 'Case Mark', 'Target CTNS', 'Pack (PCS/CTN)', 'Total PCS', 'CBM'];
+            const refHeaders = ['Invoice No.', 'Item #', 'Material No.', 'JAN Code', 'Item Description', 'Case Mark', 'Target CTNS', 'Pack (PCS/CTN)', 'Total PCS', 'Gross Weight (KGS)', 'CBM (M3)'];
             const rHead = wsRef.getRow(1);
             rHead.height = 22;
             refHeaders.forEach((h, idx) => {
@@ -1364,12 +1333,15 @@
                 row.getCell(7).value = Number(item.ctns) || 0;
                 row.getCell(8).value = Number(item.pack) || 0;
                 row.getCell(9).value = Number(item.pcs) || 0;
-                row.getCell(10).value = Number(item.cbm) || 0;
+                row.getCell(10).value = Number(item.kgs) || 0;
+                row.getCell(10).numFmt = '0.00';
+                row.getCell(11).value = Number(item.cbm) || 0;
+                row.getCell(11).numFmt = '0.000000';
             });
 
             wsRef.columns = [
                 { width: 16 }, { width: 13 }, { width: 15 }, { width: 18 },
-                { width: 45 }, { width: 18 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 12 }
+                { width: 45 }, { width: 18 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 18 }, { width: 14 }
             ];
 
             return await workbook.xlsx.writeBuffer();
