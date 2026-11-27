@@ -228,7 +228,7 @@
 
     <!-- MODAL: MANUAL ADD ITEM -->
     <div id="modal-add-item" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 hidden items-center justify-center p-4">
-        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden">
+        <div class="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden">
             <div class="bg-slate-900 text-white px-5 py-3.5 flex items-center justify-between">
                 <h3 class="text-sm font-bold flex items-center gap-2">
                     <i class="fa-solid fa-plus-circle text-emerald-400"></i>
@@ -267,26 +267,6 @@
                     <div>
                         <label class="block font-bold text-slate-700 mb-1">Case Mark</label>
                         <input type="text" id="add-casemark" placeholder="HK / ASIA" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Rework (N列)</label>
-                        <input type="text" id="add-rework" placeholder="例如: NONE" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
-                    </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">入荷日 (O列)</label>
-                        <input type="text" id="add-arrivaldate" placeholder="例如: 2026-11-09" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
-                    </div>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Factory (P列)</label>
-                        <input type="text" id="add-factory" placeholder="例如: IDEA KIDS" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
-                    </div>
-                    <div>
-                        <label class="block font-bold text-slate-700 mb-1">Battery (Q列)</label>
-                        <input type="text" id="add-battery" placeholder="例如: CR2032×1(INCLUDED)" class="w-full px-3 py-2 border border-slate-300 rounded-lg mono-font">
                     </div>
                 </div>
                 <div class="pt-3 flex justify-end gap-2 border-t border-slate-100">
@@ -405,20 +385,6 @@
             });
         }
 
-        function formatExcelCellDate(val) {
-            if (val === null || val === undefined || val === '') return '';
-            if (typeof val === 'number' && val > 25000 && val < 90000) {
-                const parsed = XLSX.SSF.parse_date_code(val);
-                if (parsed && parsed.y && parsed.m && parsed.d) {
-                    return `${parsed.y}-${String(parsed.m).padStart(2, '0')}-${String(parsed.d).padStart(2, '0')}`;
-                }
-            }
-            if (val instanceof Date && !isNaN(val)) {
-                return `${val.getFullYear()}-${String(val.getMonth() + 1).padStart(2, '0')}-${String(val.getDate()).padStart(2, '0')}`;
-            }
-            return String(val).trim();
-        }
-
         function parseCustomerOrderWorkbook(wb, fileName) {
             const sheetName = wb.SheetNames.includes('SO')
                 ? 'SO'
@@ -453,34 +419,8 @@
             }
 
             let headerRowIdx = -1;
-            // SO 工作表預設欄位：
-            // A=0(Item#), B=1(Mat#), C=2(JAN), D=3(Desc), F=5(CaseMark), G=6(pcs), H=7(CTNS), I=8(pcs/ctns), J=9(kgs), K=10(M3)
-            // N=13(Rework), O=14(入荷日), P=15(Factory), Q=16(Battery)
-            let colMap = {
-                itemNo: 0, matNo: 1, jan: 2, desc: 3, caseMark: 5,
-                pcs: 6, ctns: 7, pack: 8, kgs: 9, cbm: 10,
-                rework: 13, arrivalDate: 14, factory: 15, battery: 16
-            };
-
-            const applyHeaderRow = (targetRow) => {
-                (targetRow || []).forEach((cell, idx) => {
-                    const h = String(cell || '').trim().toLowerCase();
-                    if (!h) return;
-                    if (h.includes('item #') || h === 'item') colMap.itemNo = idx;
-                    else if (h.includes('material') || h.includes('sku')) colMap.matNo = idx;
-                    else if (h.includes('item name') || h.includes('description')) colMap.desc = idx;
-                    else if (h.includes('case mark')) colMap.caseMark = idx;
-                    else if (h === 'pcs' || h.includes('pc(s)')) colMap.pcs = idx;
-                    else if (h === 'ctns' || h.includes('ctn(s)')) colMap.ctns = idx;
-                    else if (h.includes('pcs/ctns') || h.includes('pack')) colMap.pack = idx;
-                    else if (h === 'kgs' || h === 'kg' || h.includes('gross weight')) colMap.kgs = idx;
-                    else if (h === 'm3' || h.includes('cbm')) colMap.cbm = idx;
-                    else if (h.includes('rework')) colMap.rework = idx;
-                    else if (h.includes('入荷日') || h.includes('arrival') || h.includes('eta')) colMap.arrivalDate = idx;
-                    else if (h.includes('factory')) colMap.factory = idx;
-                    else if (h.includes('battery')) colMap.battery = idx;
-                });
-            };
+            // SO 工作表預設欄位：A=0(Item#), B=1(Mat#), C=2(JAN), D=3(Desc), F=5(CaseMark), G=6(pcs), H=7(CTNS), I=8(pcs/ctns), J=9(kgs), K=10(M3)
+            let colMap = { itemNo: 0, matNo: 1, jan: 2, desc: 3, caseMark: 5, pcs: 6, ctns: 7, pack: 8, kgs: 9, cbm: 10 };
 
             for (let r = 20; r < Math.min(40, aoa.length); r++) {
                 const row = aoa[r] || [];
@@ -488,17 +428,24 @@
                 if (janCol !== -1) {
                     headerRowIdx = r;
                     colMap.jan = janCol;
-                    applyHeaderRow(row);
-                    // SO 格式中 N~Q 列標題常位於下一行 (例如 Row 29)，一併掃描合併
-                    if (aoa[r + 1]) {
-                        applyHeaderRow(aoa[r + 1]);
-                    }
+                    row.forEach((cell, idx) => {
+                        const h = String(cell || '').trim().toLowerCase();
+                        if (h.includes('item #') || h === 'item') colMap.itemNo = idx;
+                        else if (h.includes('material') || h.includes('sku')) colMap.matNo = idx;
+                        else if (h.includes('item name') || h.includes('description')) colMap.desc = idx;
+                        else if (h.includes('case mark')) colMap.caseMark = idx;
+                        else if (h === 'pcs' || h.includes('pc(s)')) colMap.pcs = idx;
+                        else if (h === 'ctns' || h.includes('ctn(s)')) colMap.ctns = idx;
+                        else if (h.includes('pcs/ctns') || h.includes('pack')) colMap.pack = idx;
+                        else if (h === 'kgs' || h === 'kg' || h.includes('gross weight')) colMap.kgs = idx;
+                        else if (h === 'm3' || h.includes('cbm')) colMap.cbm = idx;
+                    });
                     break;
                 }
             }
 
             const items = [];
-            const startRow = headerRowIdx >= 0 ? headerRowIdx + 2 : 30;
+            const startRow = headerRowIdx >= 0 ? headerRowIdx + 2 : 29;
 
             for (let r = startRow; r < aoa.length; r++) {
                 const row = aoa[r] || [];
@@ -513,11 +460,6 @@
                     const packVal = parseFloat(row[colMap.pack]) || (ctnsVal > 0 ? Math.round(pcsVal / ctnsVal) : 0);
                     const kgsVal = parseFloat(row[colMap.kgs]) || 0;
                     const cbmVal = parseFloat(row[colMap.cbm]) || 0;
-
-                    const reworkVal = String(row[colMap.rework] ?? '').trim();
-                    const arrivalDateVal = formatExcelCellDate(row[colMap.arrivalDate]);
-                    const factoryVal = String(row[colMap.factory] ?? '').trim();
-                    const batteryVal = String(row[colMap.battery] ?? '').trim();
 
                     if (ctnsVal > 0 || pcsVal > 0) {
                         items.push({
@@ -534,10 +476,6 @@
                             pack: packVal,
                             kgs: kgsVal,
                             cbm: cbmVal,
-                            rework: reworkVal,
-                            arrivalDate: arrivalDateVal,
-                            factory: factoryVal,
-                            battery: batteryVal,
                             included: true
                         });
                     }
@@ -778,7 +716,7 @@
 
                 if (kw) {
                     allSelectedOrderItems = allSelectedOrderItems.filter(i =>
-                        [i.jan, i.itemNo, i.desc, i.caseMark, i.invoiceNo, i.rework, i.arrivalDate, i.factory, i.battery].some(v => String(v || '').toLowerCase().includes(kw))
+                        [i.jan, i.itemNo, i.desc, i.caseMark, i.invoiceNo].some(v => String(v || '').toLowerCase().includes(kw))
                     );
                 }
 
@@ -794,16 +732,12 @@
                         <th class="py-2.5 px-3 border-b border-r">Case Mark</th>
                         <th class="py-2.5 px-3 border-b border-r text-right">應出箱數 (0=Sample)</th>
                         <th class="py-2.5 px-3 border-b border-r text-right">Pack</th>
-                        <th class="py-2.5 px-3 border-b border-r text-right">總件數 (PCS)</th>
-                        <th class="py-2.5 px-3 border-b border-r">Rework</th>
-                        <th class="py-2.5 px-3 border-b border-r">入荷日</th>
-                        <th class="py-2.5 px-3 border-b border-r">Factory</th>
-                        <th class="py-2.5 px-3 border-b">Battery</th>
+                        <th class="py-2.5 px-3 border-b text-right">總件數 (PCS)</th>
                     </tr>
                 `;
 
                 if (allSelectedOrderItems.length === 0) {
-                    tbody.innerHTML = `<tr><td colspan="13" class="py-10 text-center text-slate-400">沒有可顯示的訂單明細行。</td></tr>`;
+                    tbody.innerHTML = `<tr><td colspan="9" class="py-10 text-center text-slate-400">沒有可顯示的訂單明細行。</td></tr>`;
                     return;
                 }
 
@@ -823,11 +757,7 @@
                                 class="w-20 px-2 py-1 border border-slate-300 rounded text-right font-bold ${Number(item.ctns) === 0 ? 'text-amber-700 bg-amber-50' : 'text-emerald-700 bg-white'} focus:ring-1 focus:ring-emerald-500">
                         </td>
                         <td class="py-2 px-3 border-b border-r text-right text-slate-500">${item.pack || '-'}</td>
-                        <td class="py-2 px-3 border-b border-r text-right text-slate-700">${(Number(item.pcs) || 0).toLocaleString()}</td>
-                        <td class="py-2 px-3 border-b border-r text-slate-600">${escapeHtml(item.rework || '-')}</td>
-                        <td class="py-2 px-3 border-b border-r text-slate-600">${escapeHtml(item.arrivalDate || '-')}</td>
-                        <td class="py-2 px-3 border-b border-r text-slate-600">${escapeHtml(item.factory || '-')}</td>
-                        <td class="py-2 px-3 border-b text-slate-600">${escapeHtml(item.battery || '-')}</td>
+                        <td class="py-2 px-3 border-b text-right text-slate-700">${(Number(item.pcs) || 0).toLocaleString()}</td>
                     </tr>
                 `).join('');
             }
@@ -881,10 +811,6 @@
             const ctns = parseInt(document.getElementById('add-ctns').value, 10);
             const pack = parseInt(document.getElementById('add-pack').value, 10) || 1;
             const caseMark = document.getElementById('add-casemark').value.trim();
-            const rework = document.getElementById('add-rework').value.trim();
-            const arrivalDate = document.getElementById('add-arrivaldate').value.trim();
-            const factory = document.getElementById('add-factory').value.trim();
-            const battery = document.getElementById('add-battery').value.trim();
 
             if (!jan || !desc || isNaN(ctns) || ctns < 0) {
                 alert('請填寫有效的 JAN Code、貨品名稱及箱數（0 代表 Sample）！');
@@ -921,10 +847,6 @@
                 pack,
                 kgs: 0,
                 cbm: 0,
-                rework,
-                arrivalDate,
-                factory,
-                battery,
                 included: true
             });
 
@@ -1395,15 +1317,10 @@
             }
 
             // ---------------------------------------------------------------------
-            // SHEET 2: 訂單明細_OrderData (Reference Backup with KGS, M3 & SO Col N-Q)
+            // SHEET 2: 訂單明細_OrderData (Reference Backup with KGS & M3 from SO Col J & K)
             // ---------------------------------------------------------------------
             const wsRef = workbook.addWorksheet('訂單明細_OrderData', { views: [{ showGridLines: true }] });
-            const refHeaders = [
-                'Invoice No.', 'Item #', 'Material No.', 'JAN Code', 'Item Description',
-                'Case Mark', 'Target CTNS', 'Pack (PCS/CTN)', 'Total PCS',
-                'Gross Weight (KGS)', 'CBM (M3)',
-                'Rework', '入荷日', 'Factory', 'Battery'
-            ];
+            const refHeaders = ['Invoice No.', 'Item #', 'Material No.', 'JAN Code', 'Item Description', 'Case Mark', 'Target CTNS', 'Pack (PCS/CTN)', 'Total PCS', 'Gross Weight (KGS)', 'CBM (M3)'];
             const rHead = wsRef.getRow(1);
             rHead.height = 22;
             refHeaders.forEach((h, idx) => {
@@ -1430,17 +1347,11 @@
                 row.getCell(10).numFmt = '0.00';
                 row.getCell(11).value = Number(item.cbm) || 0;
                 row.getCell(11).numFmt = '0.000000';
-                row.getCell(12).value = item.rework || '';
-                row.getCell(13).value = item.arrivalDate || '';
-                row.getCell(14).value = item.factory || '';
-                row.getCell(15).value = item.battery || '';
             });
 
             wsRef.columns = [
                 { width: 16 }, { width: 13 }, { width: 15 }, { width: 18 },
-                { width: 45 }, { width: 18 }, { width: 13 }, { width: 15 }, { width: 13 },
-                { width: 18 }, { width: 14 },
-                { width: 14 }, { width: 14 }, { width: 18 }, { width: 22 }
+                { width: 45 }, { width: 18 }, { width: 13 }, { width: 15 }, { width: 13 }, { width: 18 }, { width: 14 }
             ];
 
             return await workbook.xlsx.writeBuffer();
